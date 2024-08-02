@@ -1,35 +1,28 @@
-'''
-PICMI user script reproducing the PIConGPU LWFA example
+"""
+This file is part of PIConGPU.
+Copyright 2024 PIConGPU contributors
+Authors: Masoud Afshari, Brian Edward Marre
+License: GPLv3+
+"""
 
-This Python script is example PICMI user script reproducing the LaserWakefield example setup(https://github.com/ComputationalRadiationPhysics/picongpu/tree/dev/share/picongpu/examples/LaserWakefield) 
+"""
+@file PICMI user script reproducing the PIConGPU LWFA example
 
-Intended to be used with PIConGPU (https://github.com/brian/picongpu/tree/topic-addIonizerSupport)
-
-authors: Masoud Afshari, Brian Marre.
-
-# changes (31.07.2024):
- - uses new PICMI configuration of ionization and moving_window
-'''
-
-# Recreation of of the PIConGPU LWFA simulation based on .param files of
-# https://github.com/ComputationalRadiationPhysics/picongpu/blob/dev/share/picongpu/examples/LaserWakefield/include/picongpu/param
-# and  8.cfg file:
-# https://github.com/ComputationalRadiationPhysics/picongpu/blob/dev/share/picongpu/examples/LaserWakefield/etc/picongpu/8.cfg
+This Python script is example PICMI user script reproducing the LaserWakefield example setup, based on 8.cfg.
+"""
 
 from picongpu import picmi
 from picongpu import pypicongpu
 import numpy as np
 
-from picmi.interaction.ionization.fieldionization import ADK, ADKVariant
-from picmi.interaction.ionization.fieldIonization import BSIEffectiveZ, BSIExtension
 import scipy.constants as constants
 
+# generation modifiers
 
-##### Input parameters
-
-# Enable or disable IONIZATION based on speciesInitialization.param
+# False will spawn only macro electrons, True will spawn both electrons and hydrogen ions
 ENABLE_IONS = True
 ENABLE_IONIZATION = True
+ADD_CUSTOM_INPUT = True
 
 numberCells = np.array([192 , 2048, 192])
 cellSize = np.array([0.1772e-6, 0.4430e-7, 0.1772e-6])  # unit: meter)
@@ -44,7 +37,7 @@ grid = picmi.Cartesian3DGrid(
     upper_boundary_conditions =["open", "open", "open"])
 
 gaussianProfile = picmi.distribution.GaussianDistribution(
-    density=  1.e25
+    density=  1.e25,
     center_front=8.0e-5,
     sigma_front= 8.0e-5,
     center_rear=10.0e-5,
@@ -100,19 +93,19 @@ if not ENABLE_IONIZATION:
     interaction = None
 else:
     hydrogen = hydrogen_ionization
-    adk_ionization_model = ADK(
-        ADK_variant = ADKVariant.CircularPolarization,
+    adk_ionization_model = picmi.ADK(
+        ADK_variant = picmi.ADKVariant.CircularPolarization,
         ion_species = hydrogen_ionization,
         ionization_electron_species=electrons,
         ionization_current = None)
 
-    bsi_effectiveZ_ionization_model = BSI(
-        BSI_extension = [BSIExtension.EffectiveZ],
+    bsi_effectiveZ_ionization_model = picmi.BSI(
+        BSI_extensions = [picmi.BSIExtension.EffectiveZ],
         ion_species = hydrogen_ionization,
         ionization_electron_species=electrons,
         ionization_current = None)
 
-    interaction = Interaction(ground_state_ionizaion_model_list=[adk_ionization_model, bsi_effectiveZ_ionization_model])
+    interaction = picmi.Interaction(ground_state_ionization_model_list=[adk_ionization_model, bsi_effectiveZ_ionization_model])
 
 sim = picmi.Simulation(
     solver=solver,
@@ -128,88 +121,91 @@ if ENABLE_IONS:
 
 sim.add_laser(laser, None)
 
-# adding additional non standardized input
+# additional non standardized custom user input
+# only active if custom templates are used
+
 # for generating setup with custom input see standard implementation,
 #  see https://picongpu.readthedocs.io/en/latest/usage/picmi/custom_template.html
+if ADD_CUSTOM_INPUT:
+    min_weight_input = pypicongpu.customuserinput.CustomUserInput()
+    min_weight_input.addToCustomInput({"minimum_weight": 10.0}, "minimum_weight")
+    sim.picongpu_add_custom_user_input(min_weight_input)
 
-min_weight_input = pypicongpu.customuserinput.CustomUserInput()
-min_weight_input.addToCustomInput({"minimum_weight": 10.0}, "minimum_weight")
-sim.picongpu_add_custom_user_input(min_weight_input)
+    output_configuration = pypicongpu.customuserinput.CustomUserInput()
+    output_configuration.addToCustomInput(
+        {
+            "png_plugin_data_list": "['Ex', 'Ey', 'Ez', 'Bx', 'By', 'Bz', 'Jx', 'Jy', 'Jz']",
+            "png_plugin_SCALE_IMAGE": 1.0,
+            "png_plugin_SCALE_TO_CELLSIZE": True,
+            "png_plugin_WHITE_BOX_PER_GPU": False,
+            "png_plugin_EM_FIELD_SCALE_CHANNEL1": 7,
+            "png_plugin_EM_FIELD_SCALE_CHANNEL2": -1,
+            "png_plugin_EM_FIELD_SCALE_CHANNEL3": -1,
+            "png_plugin_CUSTOM_NORMALIZATION_SI": "5.0e12 / constants.c, 5.0e12, 15.0",
+            "png_plugin_PRE_PARTICLE_DENS_OPACITY": 0.25,
+            "png_plugin_PRE_CHANNEL1_OPACITY": 1.0,
+            "png_plugin_PRE_CHANNEL2_OPACITY": 1.0,
+            "png_plugin_PRE_CHANNEL3_OPACITY": 1.0,
+            "png_plugin_preParticleDensCol": "colorScales::grayInv",
+            "png_plugin_preChannel1Col": "colorScales::green",
+            "png_plugin_preChannel2Col": "colorScales::none",
+            "png_plugin_preChannel3Col": "colorScales::none",
+            "png_plugin_preChannel1": "field_E.x() * field_E.x();",
+            "png_plugin_preChannel2": "field_E.y()",
+            "png_plugin_preChannel3": "-1.0_X * field_E.y()",
+            "png_plugin_period":100,
+            "png_plugin_axis": "yx",
+            "png_plugin_slicePoint": 0.5,
+            "png_plugin_species_name": "electron",
+            "png_plugin_folder_name": "pngElectronsYX"
+        },
+        "png plugin configuration")
 
-output_configuration = pypicongpu.customuserinput.CustomUserInput()
-output_configuration.addToCustomInput(
-    {
-        "png_plugin_data_list": "['Ex', 'Ey', 'Ez', 'Bx', 'By', 'Bz', 'Jx', 'Jy', 'Jz']",
-        "png_plugin_SCALE_IMAGE": 1.0,
-        "png_plugin_SCALE_TO_CELLSIZE": True,
-        "png_plugin_WHITE_BOX_PER_GPU": False,
-        "png_plugin_EM_FIELD_SCALE_CHANNEL1": 7,
-        "png_plugin_EM_FIELD_SCALE_CHANNEL2": -1,
-        "png_plugin_EM_FIELD_SCALE_CHANNEL3": -1,
-        "png_plugin_CUSTOM_NORMALIZATION_SI": [5.0e12 / constants.c, 5.0e12, 15.0],
-        "png_plugin_PRE_PARTICLE_DENS_OPACITY": 0.25,
-        "png_plugin_PRE_CHANNEL1_OPACITY": 1.0,
-        "png_plugin_PRE_CHANNEL2_OPACITY": 1.0,
-        "png_plugin_PRE_CHANNEL3_OPACITY": 1.0,
-        "png_plugin_preParticleDensCol": "colorScales::grayInv",
-        "png_plugin_preChannel1Col": "colorScales::green",
-        "png_plugin_preChannel2Col": "colorScales::none",
-        "png_plugin_preChannel3Col": "colorScales::none",
-        "png_plugin_preChannel1": "field_E.x() * field_E.x();",
-        "png_plugin_preChannel2": "field_E.y()",
-        "png_plugin_preChannel3": "-1.0_X * field_E.y()",
-        "png_plugin_period":100,
-        "png_plugin_axis": "yx",
-        "png_plugin_slicePoint": 0.5,
-        "png_plugin_species_name": "electron",
-        "png_plugin_folder_name": "pngElectronsYX"
-    },
-    "png plugin configuration")
-output_configuration.addToCustomInput(
-    {
-        "energy_histogram_species_name": "electron",
-        "energy_histogram_period": 100,
-        "energy_histogram_bin_count": 1024,
-        "energy_histogram_min_energy": 0.,
-        "energy_histogram_maxEnergy": 1000.,
-        "energy_histogram_filter": "all"
-    }
-    "energy histogram")
+    output_configuration.addToCustomInput(
+        {
+            "energy_histogram_species_name": "electron",
+            "energy_histogram_period": 100,
+            "energy_histogram_bin_count": 1024,
+            "energy_histogram_min_energy": 0.,
+            "energy_histogram_maxEnergy": 1000.,
+            "energy_histogram_filter": "all"
+        },
+        "energy histogram plugin configuration")
 
-output_configuration.addToCustomInput(
-    {
-        "phase_space_species_name": "electron",
-        "phase_space_period": 100,
-        "phase_space_space": "y",
-        "phase_space_momentum": "py",
-        "phase_space_min": -1.,
-        "phase_space_max": 1.,
-        "phase_space_filter": "all"
-    }
-    "phase space")
+    output_configuration.addToCustomInput(
+        {
+            "phase_space_species_name": "electron",
+            "phase_space_period": 100,
+            "phase_space_space": "y",
+            "phase_space_momentum": "py",
+            "phase_space_min": -1.,
+            "phase_space_max": 1.,
+            "phase_space_filter": "all"
+        },
+        "phase space plugin configuration")
 
-output_configuration.addToCustomInput(
-    {
-        "opnePMD_period": 100,
-        "opnePMD_file": "simData",
-        "opnePMD_extension": "bp"
-    }
-    "openPMD")
+    output_configuration.addToCustomInput(
+        {
+            "opnePMD_period": 100,
+            "opnePMD_file": "simData",
+            "opnePMD_extension": "bp"
+        },
+        "openPMD plugin configuration")
 
-output_configuration.addToCustomInput(
-    {
-        "checkpoint_period": 100,
-        "checkpoint_backend": "openPMD",
-        "checkpoint_restart_backend": "openPMD"
-    }
-    "checkpoint")
+    output_configuration.addToCustomInput(
+        {
+            "checkpoint_period": 100,
+            "checkpoint_backend": "openPMD",
+            "checkpoint_restart_backend": "openPMD"
+        },
+        "checkpoint configuration")
 
-output_configuration.addToCustomInput(
-    {
-        "macro_particle_count_period": 100,
-        "macro_particle_count_species_name": "electron"
-    }
-    "macro particle count")
-sim.picongpu_add_custom_user_input(output_configuration)
+    output_configuration.addToCustomInput(
+        {
+            "macro_particle_count_period": 100,
+            "macro_particle_count_species_name": "electron"
+        },
+        "macro particle count plugin configuration")
+    sim.picongpu_add_custom_user_input(output_configuration)
 
 sim.write_input_file("masoud_lwfa_ionization")
