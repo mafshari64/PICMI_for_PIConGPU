@@ -119,6 +119,8 @@ sim.add_species(electrons, layout=randomLayout)
 if ENABLE_IONS:
     sim.add_species(hydrogen, layout=randomLayout)
 
+picongpu_template_dir="my_template_dir"  ???????
+
 sim.add_laser(laser, None)
 
 # additional non standardized custom user input
@@ -126,6 +128,10 @@ sim.add_laser(laser, None)
 
 # for generating setup with custom input see standard implementation,
 #  see https://picongpu.readthedocs.io/en/latest/usage/picmi/custom_template.html
+# CUSTOM_INPUT parameters are defiend for LWFA simulation https://github.com/ComputationalRadiationPhysics/picongpu/tree/dev/share/picongpu/examples/LaserWakefield
+# based on:
+# 8.cfg https://github.com/ComputationalRadiationPhysics/picongpu/blob/dev/share/picongpu/examples/LaserWakefield/etc/picongpu/8.cfg
+# png.param https://github.com/ComputationalRadiationPhysics/picongpu/blob/dev/share/picongpu/examples/LaserWakefield/include/picongpu/param/png.param
 if ADD_CUSTOM_INPUT:
     min_weight_input = pypicongpu.customuserinput.CustomUserInput()
     min_weight_input.addToCustomInput({"minimum_weight": 10.0}, "minimum_weight")
@@ -135,6 +141,11 @@ if ADD_CUSTOM_INPUT:
     output_configuration.addToCustomInput(
         {
             "png_plugin_data_list": "['Ex', 'Ey', 'Ez', 'Bx', 'By', 'Bz', 'Jx', 'Jy', 'Jz']",
+            "png_plugin_species_name": "electron",
+            "png_plugin_period":100,
+            "png_plugin_axis": "yx",
+            "png_plugin_slicePoint": 0.5,
+            "png_plugin_folder_name": "pngElectronsYX",
             "png_plugin_SCALE_IMAGE": 1.0,
             "png_plugin_SCALE_TO_CELLSIZE": True,
             "png_plugin_WHITE_BOX_PER_GPU": False,
@@ -152,12 +163,7 @@ if ADD_CUSTOM_INPUT:
             "png_plugin_preChannel3Col": "colorScales::none",
             "png_plugin_preChannel1": "field_E.x() * field_E.x();",
             "png_plugin_preChannel2": "field_E.y()",
-            "png_plugin_preChannel3": "-1.0_X * field_E.y()",
-            "png_plugin_period":100,
-            "png_plugin_axis": "yx",
-            "png_plugin_slicePoint": 0.5,
-            "png_plugin_species_name": "electron",
-            "png_plugin_folder_name": "pngElectronsYX"
+            "png_plugin_preChannel3": "-1.0_X * field_E.y()"
         },
         "png plugin configuration")
 
@@ -202,8 +208,8 @@ if ADD_CUSTOM_INPUT:
 
     output_configuration.addToCustomInput(
         {
-            "macro_particle_count_period": 100,
             "macro_particle_count_species_name": "electron"
+            "macro_particle_count_period": 100,
         },
         "macro particle count plugin configuration")
     sim.picongpu_add_custom_user_input(output_configuration)
